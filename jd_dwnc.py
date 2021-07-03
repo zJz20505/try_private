@@ -1,3 +1,4 @@
+CAN_NOTIFY = True
 import datetime
 import json
 import os
@@ -5,9 +6,16 @@ import random
 import time
 from collections import defaultdict
 from pprint import pprint
-
+try:
+    from notify import send
+except Exception as e:
+    CAN_NOTIFY = False
 import requests
 
+if CAN_NOTIFY:
+    print('启用通知成功', flush=True)
+else:
+    print('启用通知失败，缺少notify.py', flush=True)
 
 class Dwnc:
     GAME_ID = 'dwnc'
@@ -15,11 +23,15 @@ class Dwnc:
     ENV = 'release'
     IGNORE_URLS = ['/login']
 
-    def __init__(self, openid, sessid, account=None, ua=None):
+    def __init__(self, openid=None, sessid=None, account=None, ua=None):
         self.ua = ua if ua else 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.7(0x1800072d) NetType/WIFI Language/zh_CN'
         self.account = account if account else openid
         self.openid = openid
         self.sessid = sessid
+        if not self.openid:
+            raise Exception('请检查openid是否填写')
+        if not self.sessid:
+            raise Exception('请检查sessid是否填写')
         self.first = True
         self.is_help = False
         self._cache = {}
@@ -6455,6 +6467,8 @@ class Dwnc:
         res = self.get('/login')
         data = res.json()
         if 'user' not in data.keys():
+            if CAN_NOTIFY:
+                send('动物农场', content=f'{self.account}\t登录失效, 换设备打开小程序，原有登录信息会过期，请重新获取')
             raise Exception('登录失效, 换设备打开小程序，原有登录信息会过期，请重新获取')
         self.random_wait(5, 10, message='没啥用的等待～假装在加载界面😂')
         land_list = data['user']['landList']
@@ -6474,7 +6488,7 @@ class Dwnc:
         if self.day_times['get_gold'] >= self.config.get('GET_GOLD_MAX'):
             self.can_gold = False
         self.coupon = data['user']['coupon']
-        self.account = data['user']['name']
+        self.account = data['user'].get('name', self.account)
         self.redpack = data['user']['redpack']
         self.orders = data['user']['orderList']
         self.warehouse = data['user']['cropList']
@@ -6508,7 +6522,11 @@ class Dwnc:
         res = self.get('/land/reap', {'landid': id, 'isVideo': self.get_is_video(can_zero=False) if red else 0})
         data = res.json()
         # print(res.json())
-        self.update_warehouse(data['crop'], crop_id)
+        if data.get('crop'):
+            self.update_warehouse(data['crop'], crop_id)
+        else:
+            print(res.json(), flush=True)
+
         self.random_wait(1, 3, message=f'收取{id}号田')
 
     def get_is_video(self, can_zero=True):
@@ -6783,7 +6801,7 @@ class Dwnc:
                 cost = info['cost']
                 self.print(f'解锁{types[str(skip_type)]["name"]}({info["name"]})所需: \t等级{self.level}/{need_level}\t金币:{self.gold}/{cost}({round(self.gold / cost * 100, 2) if cost else 100}%)')
                 if self.gold >= cost and self.level >= need_level:
-                    if skip_type >= 5:
+                    if skip_type >= 5 and self.level < 30:
                         res = self.get('/land/unlock', {'landid': str(skip_type - 4)})
                         pprint(res.json())
                         self.random_wait(1, 2, message=f'解锁{info["name"]}')
@@ -6847,6 +6865,8 @@ class Dwnc:
             self.random_wait(1, 2, message=f'提现红包{self.cash / 100}元')
             res = self.get('/user/withdraw', {})
             pprint(res.json())
+            if CAN_NOTIFY:
+                send('动物农场', content=f'{self.account}\t提现红包{self.cash / 100}元')
             self.first = False
 
     def check_auction(self):
@@ -7029,7 +7049,7 @@ class Dwnc:
                 if unlack_goods:
                     sell_good_id = unlack_goods.pop()
                     self.random_wait(1,2, message=f'拍卖上架一个{self.seeds_info[sell_good_id]["name"]}')
-                    self.get('/auction/on', {'auctionid': k, 'goodid': sell_good_id, 'num': 1, 'price': self.seeds_info[sell_good_id]['order_gold'] * 5, 'time': 2})
+                    self.get('/auction/on', {'auctionid': k, 'goodid': sell_good_id, 'num': 1, 'price': self.seeds_info[sell_good_id]['order_gold'] * 3, 'time': 2})
                     data = res.json()
                     pprint(data)
 
@@ -7037,7 +7057,7 @@ class Dwnc:
                 if unlack_goods:
                     sell_good_id = unlack_goods.pop()
                     self.random_wait(1,2, message=f'拍卖上架一个{self.seeds_info[sell_good_id]["name"]}')
-                    self.get('/auction/on', {'auctionid': k, 'goodid': sell_good_id, 'num': 1, 'price': self.seeds_info[sell_good_id]['order_gold'] * 5, 'time': 2})
+                    self.get('/auction/on', {'auctionid': k, 'goodid': sell_good_id, 'num': 1, 'price': self.seeds_info[sell_good_id]['order_gold'] * 3, 'time': 2})
                     data = res.json()
                     pprint(data)
 
@@ -7069,16 +7089,23 @@ if __name__ == '__main__':
                 data[k] = v
         return data
 
+    # accounts = "openid=xxx;sessid=xxx;&openid=xxx;&sessid=xxx;"
     accounts = os.getenv('DWNC_AUTH')
     if not accounts:
         print('请设置环境变量DWNC_AUTH', flush=True)
+
+    # ua 【非必填】
+    # ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.7(0x1800072d) NetType/WIFI Language/zh_CN"
     ua = os.getenv('DWNC_UA')
+
+    # version = "1.1.9"
     version = os.getenv('DWNC_VERSION')
     if ua:
         print(f'DWNC_UA:{ua}', flush=True)
     if version:
+        Dwnc.VERSION = version
         print(f'DWNC_VERSION:{version}', flush=True)
-    accounts = [parse(account) for account in accounts.split('&')]
+    accounts = [parse(account) for account in accounts.split('&') if account]
     accounts = [Dwnc(**account, ua=ua) for account in accounts]
 
     print(f'总计{len(accounts)}个账号', flush=True)
