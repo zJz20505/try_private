@@ -764,6 +764,9 @@ class Dwnc:
                 needs[good['id']] += good['num']
 
         for k, info in self.warehouse.items():
+            if str(k) == '1':
+                if self.day_times.get('thief_times', 0) < self.config.get('DAY_THIEF_MAX'):
+                    continue
             d = info['num'] - needs.get(k, 0)
             if d > 0:
                 unlack[k] = d
@@ -841,7 +844,7 @@ class Dwnc:
             return
 
         win_rate = os.getenv('DWNC_WIN_THIEF_RATE')
-        win_rate = win_rate if win_rate else 0.8
+        win_rate = float(win_rate) if win_rate else 0.8
         r = random.random()
         thief_id = str(thiefs.pop())
         need_num = self.thief_info[thief_id]["hp_max"] * 3 - self.warehouse.get('1', {}).get("num", 0)
